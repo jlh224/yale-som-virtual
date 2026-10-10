@@ -161,6 +161,172 @@ body,
   color: var(--pink-soft);
 }
 
+/* ---------- talking to professors */
+.talkhint {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 34px);
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(11, 11, 13, 0.85);
+  border: 1px solid var(--pink);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.talkhint b {
+  color: var(--pink);
+}
+
+.talkhint.tap {
+  pointer-events: auto;
+  background: var(--pink);
+  color: var(--black);
+  font-weight: 700;
+  font-size: 16px;
+  padding: 12px 22px;
+}
+
+.chat {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(400px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 11, 13, 0.94);
+  border: 2px solid var(--pink);
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(255, 79, 163, 0.35);
+  color: #fff;
+  z-index: 12;
+  overflow: hidden;
+}
+
+.chathead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 79, 163, 0.5);
+}
+
+.chatname {
+  font-family: Georgia, serif;
+  font-size: 20px;
+}
+
+.chatcourse {
+  color: var(--pink);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.chatclose {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--pink);
+  background: transparent;
+  color: var(--pink);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.chatlist {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble.prof {
+  align-self: flex-start;
+  background: #1f1f25;
+  border: 1px solid #34343d;
+  border-bottom-left-radius: 4px;
+}
+
+.bubble.me {
+  align-self: flex-end;
+  background: var(--pink);
+  color: var(--black);
+  border-bottom-right-radius: 4px;
+}
+
+.bubble.error {
+  align-self: center;
+  background: transparent;
+  border: 1px dashed #8a8a94;
+  color: #c9c9d1;
+  font-size: 13px;
+}
+
+.bubble.typing {
+  color: #a9a9b3;
+  font-style: italic;
+}
+
+.chatform {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 79, 163, 0.5);
+}
+
+.chatform input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #44444e;
+  background: #17171b;
+  color: #fff;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.chatform input:focus {
+  outline: none;
+  border-color: var(--pink);
+}
+
+.chatform button {
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--pink);
+  color: var(--black);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.chatform button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ---------- phone controls */
 .touchlayer {
   position: fixed;
@@ -247,5 +413,14 @@ body,
   }
   .card h1 {
     font-size: 38px;
+  }
+  /* chat becomes a bottom sheet so the professor stays in view above it */
+  .chat {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    height: 56vh;
   }
 }

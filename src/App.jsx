@@ -4,7 +4,11 @@ import World from './World.jsx'
 import Player from './Player.jsx'
 import Minimap from './Minimap.jsx'
 import TouchControls from './TouchControls.jsx'
+import Interact from './Interact.jsx'
+import ChatPanel from './ChatPanel.jsx'
+import { REAL_PROFESSORS } from './Faculty.jsx'
 import { EYE, SPAWN } from './layout.js'
+import { talk } from './talk.js'
 
 export default function App() {
   const [locked, setLocked] = useState(false)
@@ -24,11 +28,55 @@ export default function App() {
     setTouchOn(on)
   }
   const playing = locked || touchOn
-  useEffect(() => {
-    const k = (e) => e.code === 'KeyM' && setShowMap((v) => !v)
-    window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
+  // talking to professors: aim = who the crosshair is on, chat = who the chat window is open with
+  const [aim, setAim] = useState(null)
+  const [chat, setChat] = useState(null)
+  const aimRef = useRef(null)
+  aimRef.current = playing && !chat ? aim : null
+  const aimPrompt = aimRef.current && talk.targets.find((t) => t.who === aimRef.current)?.prompt
+  const openChat = useCallback((who) => {
+    setChat(who)
+    if (document.pointerLockElement) document.exitPointerLock() // free the mouse for typing
   }, [])
+  // act on whatever the crosshair is on: chat with a professor, or the target's own action (petting Dan)
+  const use = useCallback(
+    (who) => {
+      const target = talk.targets.find((t) => t.who === who)
+      if (target?.use) target.use()
+      else if (target) openChat(who)
+    },
+    [openChat],
+  )
+  const closeChat = (resume) => {
+    setChat(null)
+    if (resume && !touchOn) lockRef.current?.()
+  }
+  useEffect(() => {
+    talk.active = chat
+  }, [chat])
+  useEffect(() => {
+    const typing = (e) => e.target.closest?.('input, textarea')
+    const k = (e) => {
+      if (typing(e)) return
+      if (e.code === 'KeyM') setShowMap((v) => !v)
+      if (e.code === 'KeyE' && aimRef.current) use(aimRef.current)
+    }
+    // with the pointer locked, a click acts on whoever is under the crosshair
+    const click = () => document.pointerLockElement && aimRef.current && use(aimRef.current)
+    // embedded browsers can refuse pointer lock; fall back to the joystick so the click still walks in
+    const noLock = () => {
+      touchRef.current.active = true
+      setTouchOn(true)
+    }
+    window.addEventListener('keydown', k)
+    window.addEventListener('mousedown', click)
+    document.addEventListener('pointerlockerror', noLock)
+    return () => {
+      window.removeEventListener('keydown', k)
+      window.removeEventListener('mousedown', click)
+      document.removeEventListener('pointerlockerror', noLock)
+    }
+  }, [use])
 
   return (
     <>
@@ -38,6 +86,7 @@ export default function App() {
       >
         <World />
         <Player lockRef={lockRef} mapRef={mapRef} touchRef={touchRef} onLock={onLock} onWhere={onWhere} />
+        <Interact onAim={setAim} />
       </Canvas>
 
       <div className="where">
@@ -50,10 +99,21 @@ export default function App() {
       <button className="maptoggle" onClick={() => setShowMap((s) => !s)}>
         {showMap ? 'hide map' : 'map'}
       </button>
-      {playing && <div className="crosshair" />}
-      {touchOn && <TouchControls touchRef={touchRef} onPause={() => setTouch(false)} />}
+      {playing && !chat && <div className="crosshair" />}
+      {touchOn && !chat && <TouchControls touchRef={touchRef} onPause={() => setTouch(false)} />}
+      {aimPrompt &&
+        (touchOn ? (
+          <button className="talkhint tap" onPointerDown={() => use(aim)}>
+            {aimPrompt[0].toUpperCase() + aimPrompt.slice(1)}
+          </button>
+        ) : (
+          <div className="talkhint">
+            <b>Click</b> or press <b>E</b> to {aimPrompt}
+          </div>
+        ))}
+      {chat && <ChatPanel prof={REAL_PROFESSORS[chat]} onClose={closeChat} />}
 
-      {!playing && (
+      {!playing && !chat && (
         <div className="overlay" onClick={() => (isTouch ? setTouch(true) : lockRef.current?.())}>
           <div className="card">
             <div className="kicker">Yale SOM · Evans Hall</div>

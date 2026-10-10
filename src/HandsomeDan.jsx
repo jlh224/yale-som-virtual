@@ -1,16 +1,31 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { DRUMS, ellPt } from './layout.js'
+import { talk } from './talk.js'
 
 // Handsome Dan, Yale's bulldog. He tours a loop of 1000 randomly chosen classrooms:
 // walk the cloister to the next room, go in through a door, pause at the front, head back out.
+// Walk up to him and he stops, turns to you and sits so you can pet him; walk away and he carries on.
 
 export const DAN = { x: 0, z: 0 } // live position for the minimap
 
 const SPEED = 1.8 // m/s
 const PAUSE = 2.5 // seconds hanging out at the front of each room
 const TOUR_LENGTH = 1000
+const GREET_DIST = 2.6 // he stops and sits when you get this close...
+const LEAVE_DIST = 3.6 // ...and goes back to his tour once you are this far away
+const SIT_TILT = 0.35 // radians his body leans back when sitting
+const FRONT_Z = 0.22 // front paws stay planted; the sit pivots around them
+const HEART_LIFE = 1.4 // seconds a heart floats after a pet
+
+function heartGeo() {
+  const s = new THREE.Shape()
+  s.moveTo(0, -0.5)
+  s.bezierCurveTo(-0.9, 0.1, -0.5, 0.75, 0, 0.3)
+  s.bezierCurveTo(0.5, 0.75, 0.9, 0.1, 0, -0.5)
+  return new THREE.ShapeGeometry(s)
+}
 
 // cloister centerline loop
 const RING = Array.from({ length: 120 }, (_, i) => {
@@ -125,14 +140,34 @@ export default function HandsomeDan() {
 
   const state = useMemo(() => {
     const order = tour(1701) // Yale founded 1701
-    return { order, leg: 0, path: legPath(order[0], order[1]), seg: 0, u: 0, pause: 0 }
+    return { order, leg: 0, path: legPath(order[0], order[1]), seg: 0, u: 0, pause: 0, greeting: false, sit: 0, pets: [] }
   }, [])
+  const hearts = useRef([])
+  const heartG = useMemo(heartGeo, [])
+  const heartMats = useMemo(() => [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ color: '#ff4fa3', transparent: true, side: THREE.DoubleSide, depthWrite: false })), [])
 
-  useFrame(({ clock }, rawDt) => {
+  // he can be petted once he is sitting; each pet sends up a heart
+  const target = useMemo(() => ({ who: 'dan', pos: [0, 0, 0], height: 0.8, prompt: 'pet Handsome Dan', enabled: false }), [])
+  useEffect(() => {
+    target.use = () => {
+      state.pets.push(performance.now() / 1000)
+      if (state.pets.length > heartMats.length) state.pets.shift()
+    }
+    talk.targets.push(target)
+    return () => {
+      talk.targets = talk.targets.filter((t) => t !== target)
+    }
+  }, [target, state, heartMats])
+
+  useFrame(({ clock, camera }, rawDt) => {
     const dt = Math.min(rawDt, 0.05)
     const st = state
+    const near = Math.hypot(camera.position.x - DAN.x, camera.position.z - DAN.z)
+    st.greeting = near < (st.greeting ? LEAVE_DIST : GREET_DIST)
     let moving = true
-    if (st.pause > 0) {
+    if (st.greeting) {
+      moving = false // stay put for as long as you are next to him
+    } else if (st.pause > 0) {
       st.pause -= dt
       moving = false
     } else {
@@ -166,8 +201,8 @@ export default function HandsomeDan() {
     const x = a[0] + (b[0] - a[0]) * st.u
     const z = a[1] + (b[1] - a[1]) * st.u
     root.current.position.set(x, 0, z)
-    if (b !== a) {
-      const want = Math.atan2(b[0] - a[0], b[1] - a[1])
+    if (b !== a || st.greeting) {
+      const want = st.greeting ? Math.atan2(camera.position.x - x, camera.position.z - z) : Math.atan2(b[0] - a[0], b[1] - a[1])
       let d = want - root.current.rotation.y
       d = Math.atan2(Math.sin(d), Math.cos(d))
       root.current.rotation.y += d * Math.min(1, dt * 8)
@@ -176,12 +211,37 @@ export default function HandsomeDan() {
     DAN.z = z
     if (import.meta.env.DEV) document.body.dataset.dan = `${x.toFixed(2)},${z.toFixed(2)},${st.order[st.leg]},${st.order[(st.leg + 1) % st.order.length]}`
     const t = clock.elapsedTime
+    const now = performance.now() / 1000
+    const petted = st.pets.length ? Math.max(0, 1 - (now - st.pets[st.pets.length - 1]) / 1.2) : 0 // 1 right after a pet, fading out
+    st.sit += ((st.greeting ? 1 : 0) - st.sit) * Math.min(1, dt * 6)
+    target.pos[0] = x
+    target.pos[2] = z
+    target.enabled = st.sit > 0.6
+    const tilt = SIT_TILT * st.sit
     legs.current.forEach((l, i) => {
-      if (l) l.rotation.x = moving ? Math.sin(t * 12 + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI : 0)) * 0.5 : 0
+      if (!l) return
+      const walk = moving ? Math.sin(t * 12 + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI : 0)) * 0.5 : 0
+      // sitting: front legs stay upright under the raised chest, hind legs fold forward along the floor
+      l.rotation.x = walk * (1 - st.sit) + (i > 1 ? -1.25 * st.sit : tilt)
     })
-    tail.current.rotation.z = Math.sin(t * (moving ? 10 : 18)) * 0.6
-    head.current.rotation.y = moving ? Math.sin(t * 2) * 0.1 : Math.sin(t * 1.3) * 0.5
-    root.current.children[0].position.y = moving ? Math.abs(Math.sin(t * 12)) * 0.02 : 0
+    tail.current.rotation.z = Math.sin(t * (moving ? 10 : 18 + petted * 14)) * (0.6 + petted * 0.3)
+    head.current.rotation.y = moving ? Math.sin(t * 2) * 0.1 : st.greeting ? Math.sin(t * 9) * 0.25 * petted : Math.sin(t * 1.3) * 0.5
+    head.current.rotation.x = 0.15 * st.sit - 0.2 * petted
+    // lean back onto the haunches, pivoting around the front paws
+    const body = root.current.children[0]
+    body.rotation.x = -tilt
+    body.position.y = (moving ? Math.abs(Math.sin(t * 12)) * 0.02 : 0) - FRONT_Z * Math.sin(tilt) + Math.abs(Math.sin(t * 10)) * 0.03 * petted
+    body.position.z = FRONT_Z * (1 - Math.cos(tilt))
+    // hearts float up over his head and face the camera
+    hearts.current.forEach((h, i) => {
+      const age = i < st.pets.length ? now - st.pets[i] : HEART_LIFE
+      h.visible = age < HEART_LIFE
+      if (!h.visible) return
+      h.position.set(Math.sin(i * 2.4 + age * 3) * 0.12, 0.95 + age * 0.55, 0.2)
+      h.scale.setScalar(0.07 + age * 0.05)
+      h.quaternion.copy(root.current.quaternion).invert().multiply(camera.quaternion)
+      heartMats[i].opacity = 1 - age / HEART_LIFE
+    })
   })
 
   const B = ({ p, s, m, r = [0, 0, 0], g = SPH }) => <mesh geometry={g} material={m} position={p} scale={s} rotation={r} />
@@ -231,6 +291,9 @@ export default function HandsomeDan() {
           <B p={[0, -0.03, 0.16]} s={[0.12, 0.02, 0.03]} m={M.dark} />
         </group>
       </group>
+      {heartMats.map((hm, i) => (
+        <mesh key={i} ref={(el) => (hearts.current[i] = el)} geometry={heartG} material={hm} visible={false} />
+      ))}
     </group>
   )
 }
